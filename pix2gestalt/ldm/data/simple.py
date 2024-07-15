@@ -119,7 +119,7 @@ def read_mask(file_path):
     Purpose:
         Read in a mask image.
     """
-    return cv2.imread(file_path, -1)
+    return cv2.imread(file_path, -1)[:,:,0] # Hack around my own images being (256,256,3). Theirs are read as (256,256) though so I must be saving them wrong.
 
 def read_rgb(file_path):
     """
