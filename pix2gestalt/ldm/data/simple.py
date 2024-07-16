@@ -66,7 +66,7 @@ class GestaltData(Dataset):
 
         total_objects = len(all_occlusion_paths)
         print("Total number of samples: %d" % total_objects)
-        val_start = math.floor(total_objects / 100. * 99.)
+        val_start = math.floor(total_objects / 100. * 80.) #Changed from 99. to 80. to get 20% validation set
         if validation:
             # Last 1% as validation
             self.occlusion_paths = all_occlusion_paths[val_start:]
