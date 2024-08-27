@@ -1,5 +1,5 @@
 model:
-  base_learning_rate: 1.0e-04
+  base_learning_rate: 1.0e-05
   target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     linear_start: 0.00085
@@ -71,9 +71,10 @@ model:
 data:
   target: ldm.data.simple.GestaltDataModule
   params:
-    root_dir: '/local/vondrick/ege/datasets/pix2gestalt_occlusions_release'
-    batch_size: 192
-    num_workers: 32
+    root_dir: '/data/jonathandupuis/datasets/occlusion_dataset_25/train'
+    batch_size: 24
+    num_workers: 12
+    augmentations: True
     train:
       validation: False
     validation:
@@ -84,7 +85,8 @@ lightning:
   metrics_over_trainsteps_checkpoint: True
   modelcheckpoint:
     params:
-      every_n_train_steps: 500
+      every_n_epochs: 1
+      save_top_k: 1
   callbacks:
     image_logger:
       target: main.ImageLogger
@@ -105,6 +107,8 @@ lightning:
 
   trainer:
     benchmark: true
-    val_check_interval: 5
+    val_check_interval: 1.0
+    max_epochs: 50
+    log_every_n_steps: 5
     num_sanity_val_steps: 0
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 4

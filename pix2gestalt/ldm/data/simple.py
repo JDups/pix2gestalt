@@ -26,17 +26,19 @@ import webdataset as wds
 import math
 from ldm.data.image_folder import make_dataset
 from torch.utils.data.distributed import DistributedSampler
+import albumentations as A
 
 class GestaltDataModule(pl.LightningDataModule):
     def __init__(self, root_dir, batch_size, train=None, validation=None,
-                 test=None, num_workers=4, **kwargs):
+                 test=None, num_workers=4, augmentations=False, **kwargs):
         super().__init__(self)
         self.root_dir = root_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.augmentations = augmentations
 
     def train_dataloader(self):
-        dataset = GestaltData(root_dir = self.root_dir, validation=False)
+        dataset = GestaltData(root_dir = self.root_dir, validation=False, augmentations = self.augmentations)
         sampler = DistributedSampler(dataset)
         return DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, sampler=sampler, drop_last=True)
 
@@ -51,8 +53,10 @@ class GestaltData(Dataset):
             root_dir,
             validation=False, 
             is_trainsize_ablation = False,
+            augmentations = False
             ) -> None:
         self.root_dir = Path(root_dir)
+        self.augmentations = augmentations
 
         self.occlusion_root = os.path.join(root_dir, 'occlusion')
         self.whole_root = os.path.join(root_dir, 'whole')
@@ -63,6 +67,39 @@ class GestaltData(Dataset):
         all_whole_paths = sorted(make_dataset(self.whole_root))
         all_whole_mask_paths = sorted(make_dataset(self.whole_mask_root))
         all_visible_mask_paths = sorted(make_dataset(self.visible_mask_root))
+        
+        if augmentations:
+          print("Augmenting dataset samples")
+          self.transforms_all = A.Compose([
+            A.Flip(),
+            A.Rotate(limit=(-90, 90), border_mode=cv2.BORDER_CONSTANT, p=0.5),
+            ],
+            additional_targets={'mask': 'image', 'whole': 'image'}
+          )
+          self.transforms_img_whole = A.Compose([
+            A.OneOf([
+              A.AdvancedBlur(),
+              A.MotionBlur(),
+              A.MedianBlur(),
+              A.GaussianBlur(),
+            ])
+            ], additional_targets={'whole': 'image'}, p=0.3
+          )
+          self.transforms_img = A.Compose([
+            A.GaussNoise(p=0.3),
+            A.OneOf([
+              A.ColorJitter(),
+              A.ChromaticAberration(),
+              A.CLAHE(),
+              A.RandomBrightnessContrast(),
+              A.HueSaturationValue(),
+            ], p=0.3),
+            A.OneOf([
+              A.RandomRain(),
+              A.RandomSunFlare(src_radius=200),
+            ], p=0.3),
+            ], p=0.8
+          )
 
         total_objects = len(all_occlusion_paths)
         print("Total number of samples: %d" % total_objects)
@@ -99,6 +136,14 @@ class GestaltData(Dataset):
         rgb_visible_mask[:,:,0] = visible_mask
         rgb_visible_mask[:,:,1] = visible_mask
         rgb_visible_mask[:,:,2] = visible_mask
+        
+        if self.augmentations:
+          transformed = self.transforms_all(image=occluded_object_image, mask=rgb_visible_mask, whole=whole_object_image)
+          rgb_visible_mask = transformed["mask"]
+          transformed = self.transforms_img_whole(image=transformed["image"], whole=transformed["whole"])
+          whole_object_image = transformed["whole"]
+          transformed = self.transforms_img(image=transformed["image"])
+          occluded_object_image = transformed["image"]
 
         data["image_cond"] = self.process_image(occluded_object_image) # input occlusion image
         data["visible_mask_cond"] = self.process_image(rgb_visible_mask) # input visible (modal) mask
